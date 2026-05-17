@@ -1,10 +1,16 @@
 package com.cookbook.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -23,6 +29,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cookbook.backend.AIChatBot
+import com.cookbook.backend.FirebaseManager
 import com.cookbook.data.model.ParsedResponse
 import com.cookbook.ui.theme.*
 import com.cookbook.ui.viewmodel.CookbookViewModel
@@ -45,10 +52,8 @@ fun ChatScreen(
     onNavigateToPantry: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
-    var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var inputText by remember { mutableStateOf("") }
     var isThinking by remember { mutableStateOf(false) }
-    var aiResponse by remember { mutableStateOf<ParsedResponse?>(null) }
     var showConfirmDialog by remember { mutableStateOf(false) }
     var showBudgetWarning by remember { mutableStateOf(false) }
     var warningMessage by remember { mutableStateOf("") }
@@ -58,35 +63,52 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     var showSideMenu by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
+    var showHistorySidebar by remember { mutableStateOf(false) }
+
+    // Chat sessions list for sidebar
+    var chatSessions by remember { mutableStateOf(listOf<Map<String, Any>>()) }
 
     val initialGreeting = "Hello! I'm Chef Dirk, your personal AI chef. " +
             "Ask me to suggest a recipe or tell me what ingredients you have!"
 
+    val pastChats = listOf(
+        "Adobo with 500 budget",
+        "Pantry check: eggs, flour",
+        "Healthy breakfast ideas",
+        "Chicken soup recipe",
+        "Garlic Price Breakdown Per Piece",
+        "AI Responses to Inappropriate Input"
+    )
+
     suspend fun sendMessage(
         text: String,
         currentMessages: List<ChatMessage>,
-        updateMessages: (List<ChatMessage>) -> Unit,
         setThinking: (Boolean) -> Unit,
-        setAiResponse: (ParsedResponse?) -> Unit,
         scrollState: androidx.compose.foundation.lazy.LazyListState
     ) {
         val updated = currentMessages + ChatMessage(text, isUser = true)
-        updateMessages(updated)
+        viewModel.activeChatMessages.clear()
+        viewModel.activeChatMessages.addAll(updated)
 
         setThinking(true)
-        updateMessages(updated + ChatMessage("", isUser = false, isThinking = true))
+        viewModel.activeChatMessages.add(ChatMessage("", isUser = false, isThinking = true))
 
         val result = withContext(Dispatchers.IO) {
             AIChatBot.askChefAI(text, viewModel.state.value.currentBudget)
         }
 
         setThinking(false)
+        // Remove the thinking bubble
+        if (viewModel.activeChatMessages.isNotEmpty() && viewModel.activeChatMessages.last().isThinking) {
+            viewModel.activeChatMessages.removeAt(viewModel.activeChatMessages.lastIndex)
+        }
+
         val finalMessages = if (result.hasRecipe) {
             updated + ChatMessage(
                 "Here's what I found: **${result.recipeName}**\n\n" +
                         result.ingredients.joinToString("\n") + "\n\n" +
                         "Estimated cost: Php %.2f\nCalories: ${result.calories}\nProtein: ${result.protein}"
-                    .format(result.totalEstimatedCost),
+                            .format(result.totalEstimatedCost),
                 isUser = false
             )
         } else {
@@ -95,27 +117,56 @@ fun ChatScreen(
                 isUser = false
             )
         }
-        updateMessages(finalMessages)
+
+        viewModel.activeChatMessages.clear()
+        viewModel.activeChatMessages.addAll(finalMessages)
 
         if (result.hasRecipe) {
-            setAiResponse(result)
+            viewModel.activeAiResponse = result
+        }
+
+        // Save Chat Session to Firebase
+        var activeChatId = viewModel.activeChatId
+        if (activeChatId.isEmpty()) {
+            activeChatId = java.util.UUID.randomUUID().toString()
+            viewModel.activeChatId = activeChatId
+        }
+
+        val chatTitle = finalMessages.firstOrNull { it.isUser }?.text?.take(25)?.let { "$it..." } ?: "New Chat"
+        val messagesData = finalMessages.map {
+            mapOf("text" to it.text, "isUser" to it.isUser)
+        }
+
+        FirebaseManager.saveChatSession(activeChatId, chatTitle, messagesData)
+
+        FirebaseManager.loadChatSessions { sessions ->
+            chatSessions = sessions
         }
 
         kotlinx.coroutines.delay(100)
-        scrollState.animateScrollToItem(finalMessages.size - 1)
+        if (viewModel.activeChatMessages.isNotEmpty()) {
+            scrollState.animateScrollToItem(viewModel.activeChatMessages.size - 1)
+        }
     }
 
     LaunchedEffect(Unit) {
-        if (messages.isEmpty()) {
-            messages = listOf(ChatMessage(initialGreeting, isUser = false))
+        // If it's completely empty, initialize it with the greeting
+        if (viewModel.activeChatMessages.isEmpty()) {
+            viewModel.activeChatMessages.add(ChatMessage(initialGreeting, isUser = false))
         }
         if (state.pendingPantryPrompt != null) {
             inputText = state.pendingPantryPrompt!!
             scope.launch {
-                sendMessage(viewModel.state.value.pendingPantryPrompt!!,
-                    messages, { messages = it }, { isThinking = it },
-                    { aiResponse = it }, listState)
+                sendMessage(
+                    viewModel.state.value.pendingPantryPrompt!!,
+                    viewModel.activeChatMessages,
+                    { isThinking = it },
+                    listState
+                )
             }
+        }
+        FirebaseManager.loadChatSessions { sessions ->
+            chatSessions = sessions
         }
     }
 
@@ -147,6 +198,9 @@ fun ChatScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showHistorySidebar = true }) {
+                        Icon(Icons.Default.History, contentDescription = "Chat History", tint = White)
+                    }
                     IconButton(onClick = { showBudgetDialog = true }) {
                         Icon(Icons.Default.MonetizationOn, contentDescription = "Budget", tint = White)
                     }
@@ -165,7 +219,7 @@ fun ChatScreen(
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(messages) { message ->
+                items(viewModel.activeChatMessages) { message ->
                     ChatBubble(message = message)
                 }
             }
@@ -196,9 +250,7 @@ fun ChatScreen(
                                     inputText = ""
                                     focusManager.clearFocus()
                                     scope.launch {
-                                        sendMessage(text, messages,
-                                            { messages = it }, { isThinking = it },
-                                            { aiResponse = it }, listState)
+                                        sendMessage(text, viewModel.activeChatMessages, { isThinking = it }, listState)
                                     }
                                 }
                             }
@@ -217,9 +269,7 @@ fun ChatScreen(
                                 inputText = ""
                                 focusManager.clearFocus()
                                 scope.launch {
-                                    sendMessage(text, messages,
-                                        { messages = it }, { isThinking = it },
-                                        { aiResponse = it }, listState)
+                                    sendMessage(text, viewModel.activeChatMessages, { isThinking = it }, listState)
                                 }
                             }
                         },
@@ -249,11 +299,11 @@ fun ChatScreen(
         }
 
         // Add to shopping list FAB
-        if (aiResponse?.hasRecipe == true) {
+        if (viewModel.activeAiResponse?.hasRecipe == true) {
             FloatingActionButton(
                 onClick = {
                     val analysis = com.cookbook.backend.Chatbackend.analyzeRecipe(
-                        aiResponse!!, state.currentBudget)
+                        viewModel.activeAiResponse!!, state.currentBudget)
                     when (analysis.status) {
                         com.cookbook.data.model.BudgetStatus.NO_BUDGET -> {
                             warningMessage = "You haven't set a budget. Want to add to the shopping list anyway?"
@@ -279,7 +329,7 @@ fun ChatScreen(
             }
         }
 
-        // Side menu
+        // Side menu drawer
         if (showSideMenu) {
             SideMenuOverlay(
                 viewModel = viewModel,
@@ -293,6 +343,125 @@ fun ChatScreen(
         if (showBudgetDialog) {
             AddBudgetDialog(viewModel = viewModel, onDismiss = { showBudgetDialog = false })
         }
+
+        // --- ANIMATED CHAT HISTORY SIDEBAR OVERLAY ---
+        AnimatedVisibility(
+            visible = showHistorySidebar,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable { showHistorySidebar = false }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showHistorySidebar,
+            enter = slideInHorizontally(initialOffsetX = { fullWidth -> fullWidth }),
+            exit = slideOutHorizontally(targetOffsetX = { fullWidth -> fullWidth }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            val highlightCol = GreenPrimary
+            val inactiveTextCol = DarkGray
+
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(300.dp)
+                    .background(White)
+                    .clickable(enabled = false) {}
+                    .padding(top = 56.dp, bottom = 16.dp)
+            ) {
+                // "New chat" row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            // Triggers the ViewModel session reset logic
+                            viewModel.startNewChatSession(ChatMessage(initialGreeting, isUser = false))
+                            showHistorySidebar = false
+                        }
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "New Chat",
+                        tint = Black,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "New chat",
+                        color = Black,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // "Chats" Header
+                Text(
+                    text = "Chats",
+                    color = GreenDark,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+
+                // Render history
+                LazyColumn(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    itemsIndexed(chatSessions) { index, session ->
+                        val sessionId = session["id"] as? String ?: ""
+                        val chatTitle = session["title"] as? String ?: "Chat"
+                        val isSelected = sessionId == viewModel.activeChatId
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 2.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isSelected) highlightCol else Color.Transparent)
+                                .clickable {
+                                    viewModel.activeChatId = sessionId
+                                    val rawMessages = session["messages"] as? List<*> ?: emptyList<Any>()
+
+                                    val parsed = rawMessages.mapNotNull {
+                                        val map = it as? Map<*, *>
+                                        if (map != null) {
+                                            ChatMessage(
+                                                text = map["text"] as? String ?: "",
+                                                isUser = map["isUser"] as? Boolean ?: false,
+                                                isThinking = false
+                                            )
+                                        } else null
+                                    }
+
+                                    viewModel.activeChatMessages.clear()
+                                    viewModel.activeChatMessages.addAll(parsed)
+                                    viewModel.activeAiResponse = null
+                                    showHistorySidebar = false
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = chatTitle,
+                                color = if (isSelected) Color.White else inactiveTextCol,
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Confirm add to shopping list
@@ -303,9 +472,9 @@ fun ChatScreen(
             text = { Text("Do you want to add missing ingredients to the shopping list?") },
             confirmButton = {
                 TextButton(onClick = {
-                    aiResponse?.let { viewModel.saveRecipeToMenu(it) }
+                    viewModel.activeAiResponse?.let { viewModel.saveRecipeToMenu(it) }
                     showConfirmDialog = false
-                    aiResponse = null
+                    viewModel.activeAiResponse = null
                 }) {
                     Text("Yes", color = GreenPrimary)
                 }

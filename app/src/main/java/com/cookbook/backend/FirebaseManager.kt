@@ -6,6 +6,7 @@ import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.cookbook.data.model.PantryItem
 import java.util.HashMap
 import java.util.ArrayList
@@ -119,7 +120,7 @@ object FirebaseManager {
         }
         val userId = currentUser.uid
         val db = FirebaseFirestore.getInstance()
-        
+
         db.collection("users").document(userId).get()
             .addOnSuccessListener { document ->
                 if (document != null && document.exists()) {
@@ -155,6 +156,44 @@ object FirebaseManager {
                     val freshPantry = ArrayList<PantryItem>()
                     onComplete("Php 0.00", freshPantry, "No meal selected")
                 }
+            }
+    }
+
+    // --- NEW: CHAT HISTORY FUNCTIONS ---
+
+    fun saveChatSession(chatId: String, title: String, messages: List<Map<String, Any>>) {
+        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+        val db = FirebaseFirestore.getInstance()
+
+        val chatData = hashMapOf(
+            "id" to chatId,
+            "title" to title,
+            "timestamp" to System.currentTimeMillis(),
+            "messages" to messages
+        )
+
+        db.collection("users").document(currentUser.uid)
+            .collection("chats").document(chatId).set(chatData)
+    }
+
+    fun loadChatSessions(onComplete: (List<Map<String, Any>>) -> Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser == null) {
+            onComplete(emptyList())
+            return
+        }
+        val db = FirebaseFirestore.getInstance()
+
+        db.collection("users").document(currentUser.uid)
+            .collection("chats")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val results = snapshot.documents.mapNotNull { it.data }
+                onComplete(results)
+            }
+            .addOnFailureListener {
+                onComplete(emptyList())
             }
     }
 

@@ -1,5 +1,9 @@
 package com.cookbook.ui.viewmodel
 
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cookbook.backend.AIChatBot
@@ -16,6 +20,7 @@ import com.cookbook.backend.SignUpBackend
 import com.cookbook.backend.UserProfileBackend
 import com.cookbook.backend.VerificationBackend
 import com.cookbook.data.model.*
+import com.cookbook.ui.screens.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +32,19 @@ class CookbookViewModel : ViewModel() {
 
     private val _state = MutableStateFlow(CookbookState())
     val state: StateFlow<CookbookState> = _state.asStateFlow()
+
+    // --- NEW: Persistent Active Chat State Variables ---
+    val activeChatMessages = mutableStateListOf<ChatMessage>()
+    var activeChatId by mutableStateOf("")
+    var activeAiResponse by mutableStateOf<ParsedResponse?>(null)
+
+    // Call this when resetting or starting a clean session
+    fun startNewChatSession(initialGreeting: ChatMessage) {
+        activeChatMessages.clear()
+        activeChatMessages.add(initialGreeting)
+        activeChatId = ""
+        activeAiResponse = null
+    }
 
     fun clearError() {
         _state.update { it.copy(errorMessage = null) }
@@ -122,6 +140,9 @@ class CookbookViewModel : ViewModel() {
     fun logout() {
         UserProfileBackend.performLogout()
         _state.update { CookbookState() }
+        activeChatMessages.clear()
+        activeChatId = ""
+        activeAiResponse = null
     }
 
     suspend fun sendOTP(email: String): OTPResult {
