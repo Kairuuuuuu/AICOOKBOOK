@@ -197,6 +197,25 @@ object FirebaseManager {
             }
     }
 
+    fun deleteChatSession(chatId: String, onComplete: (Boolean) -> Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser == null) {
+            onComplete(false)
+            return
+        }
+        val db = FirebaseFirestore.getInstance()
+
+        db.collection("users").document(currentUser.uid)
+            .collection("chats").document(chatId)
+            .delete()
+            .addOnSuccessListener {
+                onComplete(true)
+            }
+            .addOnFailureListener {
+                onComplete(false)
+            }
+    }
+
     private fun mapFirebaseError(exception: Exception?): String {
         if (exception !is FirebaseAuthException) {
             if (exception != null) {

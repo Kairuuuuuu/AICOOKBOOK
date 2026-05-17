@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.cookbook.data.model.PantryItem
 import com.cookbook.ui.theme.*
 import com.cookbook.ui.viewmodel.CookbookViewModel
@@ -41,6 +43,8 @@ fun PantryScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showSideMenu by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
+    var itemToEdit by remember { mutableStateOf<PantryItem?>(null) }
+    var itemToDelete by remember { mutableStateOf<PantryItem?>(null) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -48,11 +52,29 @@ fun PantryScreen(
         viewModel.refreshPantry()
     }
 
+    var currentPage by remember { mutableIntStateOf(1) }
+    val itemsPerPage = 6
+
     val filteredItems = remember(state.pantryItems, searchQuery) {
         if (searchQuery.isBlank()) state.pantryItems
         else state.pantryItems.filter {
             it.name.contains(searchQuery, ignoreCase = true)
         }
+    }
+
+    val totalPages = remember(filteredItems) {
+        maxOf(1, kotlin.math.ceil(filteredItems.size / itemsPerPage.toDouble()).toInt())
+    }
+
+    LaunchedEffect(totalPages) {
+        if (currentPage > totalPages) {
+            currentPage = totalPages
+        }
+    }
+
+    val paginatedItems = remember(filteredItems, currentPage) {
+        val startIndex = (currentPage - 1) * itemsPerPage
+        filteredItems.drop(startIndex).take(itemsPerPage)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -112,7 +134,7 @@ fun PantryScreen(
             )
 
             // Pantry grid
-            if (filteredItems.isEmpty()) {
+            if (paginatedItems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentAlignment = Alignment.Center
@@ -148,8 +170,44 @@ fun PantryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filteredItems) { item ->
-                        PantryCard(item = item)
+                    items(paginatedItems) { item ->
+                        PantryCard(
+                            item = item,
+                            onClick = { itemToEdit = item },
+                            onDeleteClick = { itemToDelete = item }
+                        )
+                    }
+                }
+                
+                if (totalPages > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val startPage = maxOf(1, minOf(currentPage - 2, totalPages - 4))
+                        val endPage = minOf(totalPages, startPage + 4)
+                        for (page in startPage..endPage) {
+                            val isSelected = page == currentPage
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) GreenPrimary else Color.Transparent)
+                                    .border(1.dp, if (isSelected) GreenPrimary else LightGray, CircleShape)
+                                    .clickable { currentPage = page },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = page.toString(),
+                                    color = if (isSelected) White else DarkGray,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -202,27 +260,63 @@ fun PantryScreen(
             }
         )
     }
+
+    // Edit item dialog
+    itemToEdit?.let { item ->
+        EditPantryItemDialog(
+            item = item,
+            onDismiss = { itemToEdit = null },
+            onSave = { newName, newQty, newExpDate ->
+                viewModel.editPantryItem(item, newName, newQty, newExpDate)
+                itemToEdit = null
+            }
+        )
+    }
+
+    // Delete item dialog
+    itemToDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            title = { Text("Delete Item", textAlign = TextAlign.Center) },
+            text = { Text("Are you sure you want to delete ${item.name}?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deletePantryItem(item)
+                    itemToDelete = null
+                }) {
+                    Text("Yes", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text("No")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun PantryCard(item: PantryItem) {
+fun PantryCard(item: PantryItem, onClick: () -> Unit = {}, onDeleteClick: () -> Unit = {}) {
     val status = remember(item.expDate) { getExpiryStatus(item.expDate) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(1f),
+            .aspectRatio(1f)
+            .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = White),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -281,9 +375,21 @@ fun PantryCard(item: PantryItem) {
                         ExpiryStatus.EXPIRED -> ErrorRed
                     }
                 )
-            }
+            } // ends Row
+        } // ends Column
+        IconButton(
+            onClick = onDeleteClick,
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete",
+                tint = ErrorRed,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
+}
 }
 
 enum class ExpiryStatus { FRESH, EXPIRING, EXPIRED }
@@ -313,6 +419,10 @@ fun AddPantryItemDialog(
     var qty by remember { mutableStateOf("") }
     var expDate by remember { mutableStateOf("") }
     var dateError by remember { mutableStateOf(false) }
+    var emptyError by remember { mutableStateOf(false) }
+    var zeroQtyError by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -321,34 +431,55 @@ fun AddPantryItemDialog(
             Column {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { 
+                        name = it
+                        emptyError = false
+                    },
                     label = { Text("Food Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    isError = emptyError && name.isBlank()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = qty,
-                    onValueChange = { qty = it },
+                    onValueChange = { 
+                        qty = it
+                        emptyError = false
+                        zeroQtyError = false
+                    },
                     label = { Text("Quantity") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    isError = (emptyError && qty.isBlank()) || zeroQtyError
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = expDate,
-                    onValueChange = {
-                        expDate = it
-                        dateError = false
-                    },
-                    label = { Text("Expiry Date (MM/DD/YYYY)") },
-                    singleLine = true,
-                    isError = dateError,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = expDate,
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("Expiry Date (MM/DD/YYYY)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        isError = dateError || (emptyError && expDate.isBlank())
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showDatePicker = true }
+                    )
+                }
+                if (emptyError) {
+                    Text("All fields must be filled.", color = ErrorRed, fontSize = 12.sp)
+                }
+                if (zeroQtyError) {
+                    Text("Quantity must be a valid positive number.", color = ErrorRed, fontSize = 12.sp)
+                }
                 if (dateError) {
                     Text("Invalid date format. Use MM/DD/YYYY",
                         color = ErrorRed, fontSize = 12.sp)
@@ -357,6 +488,15 @@ fun AddPantryItemDialog(
         },
         confirmButton = {
             TextButton(onClick = {
+                if (name.isBlank() || qty.isBlank() || expDate.isBlank()) {
+                    emptyError = true
+                    return@TextButton
+                }
+                val qtyInt = qty.toIntOrNull()
+                if (qtyInt == null || qtyInt <= 0) {
+                    zeroQtyError = true
+                    return@TextButton
+                }
                 if (expDate.isNotBlank()) {
                     try {
                         LocalDate.parse(expDate, DateTimeFormatter.ofPattern("MM/dd/yyyy"))
@@ -376,4 +516,157 @@ fun AddPantryItemDialog(
             }
         }
     )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
+                        expDate = date.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                        dateError = false
+                        emptyError = false
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditPantryItemDialog(
+    item: PantryItem,
+    onDismiss: () -> Unit,
+    onSave: (name: String, qty: String, expDate: String) -> Unit
+) {
+    var name by remember { mutableStateOf(item.name) }
+    var qty by remember { mutableStateOf(item.qty) }
+    var expDate by remember { mutableStateOf(item.expDate) }
+    var dateError by remember { mutableStateOf(false) }
+    var emptyError by remember { mutableStateOf(false) }
+    var zeroQtyError by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Item", textAlign = TextAlign.Center) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { 
+                        name = it
+                        emptyError = false
+                    },
+                    label = { Text("Food Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    isError = emptyError && name.isBlank()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = qty,
+                    onValueChange = { 
+                        qty = it
+                        emptyError = false
+                        zeroQtyError = false
+                    },
+                    label = { Text("Quantity") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    isError = (emptyError && qty.isBlank()) || zeroQtyError
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = expDate,
+                        onValueChange = { },
+                        readOnly = true,
+                        label = { Text("Expiry Date (MM/DD/YYYY)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        isError = dateError || (emptyError && expDate.isBlank())
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { showDatePicker = true }
+                    )
+                }
+                if (emptyError) {
+                    Text("All fields must be filled.", color = ErrorRed, fontSize = 12.sp)
+                }
+                if (zeroQtyError) {
+                    Text("Quantity must be a valid positive number.", color = ErrorRed, fontSize = 12.sp)
+                }
+                if (dateError) {
+                    Text("Invalid date format. Use MM/DD/YYYY", color = ErrorRed, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isBlank() || qty.isBlank() || expDate.isBlank()) {
+                    emptyError = true
+                    return@TextButton
+                }
+                val qtyInt = qty.toIntOrNull()
+                if (qtyInt == null || qtyInt <= 0) {
+                    zeroQtyError = true
+                    return@TextButton
+                }
+                if (expDate.isNotBlank()) {
+                    try {
+                        LocalDate.parse(expDate, DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                    } catch (_: Exception) {
+                        dateError = true
+                        return@TextButton
+                    }
+                }
+                onSave(name, qty, expDate)
+            }) {
+                Text("Save", color = GreenPrimary)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { millis ->
+                        val date = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
+                        expDate = date.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))
+                        dateError = false
+                        emptyError = false
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }

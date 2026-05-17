@@ -40,7 +40,8 @@ import kotlinx.coroutines.withContext
 data class ChatMessage(
     val text: String,
     val isUser: Boolean,
-    val isThinking: Boolean = false
+    val isThinking: Boolean = false,
+    val recipe: ParsedResponse? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -67,6 +68,7 @@ fun ChatScreen(
 
     // Chat sessions list for sidebar
     var chatSessions by remember { mutableStateOf(listOf<Map<String, Any>>()) }
+    var chatToDelete by remember { mutableStateOf<String?>(null) }
 
     val initialGreeting = "Hello! I'm Chef Dirk, your personal AI chef. " +
             "Ask me to suggest a recipe or tell me what ingredients you have!"
@@ -109,7 +111,8 @@ fun ChatScreen(
                         result.ingredients.joinToString("\n") + "\n\n" +
                         "Estimated cost: Php %.2f\nCalories: ${result.calories}\nProtein: ${result.protein}"
                             .format(result.totalEstimatedCost),
-                isUser = false
+                isUser = false,
+                recipe = result
             )
         } else {
             updated + ChatMessage(
@@ -134,7 +137,19 @@ fun ChatScreen(
 
         val chatTitle = finalMessages.firstOrNull { it.isUser }?.text?.take(25)?.let { "$it..." } ?: "New Chat"
         val messagesData = finalMessages.map {
-            mapOf("text" to it.text, "isUser" to it.isUser)
+            val map = mutableMapOf<String, Any>(
+                "text" to it.text,
+                "isUser" to it.isUser
+            )
+            if (it.recipe != null) {
+                map["hasRecipe"] = true
+                map["recipeName"] = it.recipe.recipeName
+                map["ingredients"] = it.recipe.ingredients
+                map["totalEstimatedCost"] = it.recipe.totalEstimatedCost
+                map["calories"] = it.recipe.calories
+                map["protein"] = it.recipe.protein
+            }
+            map
         }
 
         FirebaseManager.saveChatSession(activeChatId, chatTitle, messagesData)
@@ -220,7 +235,25 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(viewModel.activeChatMessages) { message ->
-                    ChatBubble(message = message)
+                    ChatBubble(message = message, onAddToCart = { recipe ->
+                        viewModel.activeAiResponse = recipe
+                        val analysis = com.cookbook.backend.Chatbackend.analyzeRecipe(
+                            recipe, state.currentBudget)
+                        when (analysis.status) {
+                            com.cookbook.data.model.BudgetStatus.NO_BUDGET -> {
+                                warningMessage = "You haven't set a budget. Want to add to the shopping list anyway?"
+                                showBudgetWarning = true
+                            }
+                            com.cookbook.data.model.BudgetStatus.INSUFFICIENT_FUNDS -> {
+                                warningMessage = "This recipe costs Php %.2f but your budget is Php %.2f. Add anyway?"
+                                    .format(analysis.finalOutOfPocketCost, analysis.currentBudget)
+                                showBudgetWarning = true
+                            }
+                            com.cookbook.data.model.BudgetStatus.OK -> {
+                                showConfirmDialog = true
+                            }
+                        }
+                    })
                 }
             }
 
@@ -298,36 +331,7 @@ fun ChatScreen(
             })
         }
 
-        // Add to shopping list FAB
-        if (viewModel.activeAiResponse?.hasRecipe == true) {
-            FloatingActionButton(
-                onClick = {
-                    val analysis = com.cookbook.backend.Chatbackend.analyzeRecipe(
-                        viewModel.activeAiResponse!!, state.currentBudget)
-                    when (analysis.status) {
-                        com.cookbook.data.model.BudgetStatus.NO_BUDGET -> {
-                            warningMessage = "You haven't set a budget. Want to add to the shopping list anyway?"
-                            showBudgetWarning = true
-                        }
-                        com.cookbook.data.model.BudgetStatus.INSUFFICIENT_FUNDS -> {
-                            warningMessage = "This recipe costs Php %.2f but your budget is Php %.2f. Add anyway?"
-                                .format(analysis.finalOutOfPocketCost, analysis.currentBudget)
-                            showBudgetWarning = true
-                        }
-                        com.cookbook.data.model.BudgetStatus.OK -> {
-                            showConfirmDialog = true
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 140.dp),
-                containerColor = GreenPrimary,
-                contentColor = White
-            ) {
-                Icon(Icons.Default.ShoppingCart, contentDescription = "Add to list")
-            }
-        }
+
 
         // Side menu drawer
         if (showSideMenu) {
@@ -422,7 +426,7 @@ fun ChatScreen(
                         val chatTitle = session["title"] as? String ?: "Chat"
                         val isSelected = sessionId == viewModel.activeChatId
 
-                        Box(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 2.dp)
@@ -435,10 +439,22 @@ fun ChatScreen(
                                     val parsed = rawMessages.mapNotNull {
                                         val map = it as? Map<*, *>
                                         if (map != null) {
+                                            val hasRecipe = map["hasRecipe"] as? Boolean ?: false
+                                            val recipe = if (hasRecipe) {
+                                                ParsedResponse(
+                                                    recipeName = map["recipeName"] as? String ?: "",
+                                                    ingredients = (map["ingredients"] as? List<*>)?.mapNotNull { item -> item as? String } ?: emptyList(),
+                                                    hasRecipe = true,
+                                                    totalEstimatedCost = (map["totalEstimatedCost"] as? Number)?.toDouble() ?: 0.0,
+                                                    calories = map["calories"] as? String ?: "N/A",
+                                                    protein = map["protein"] as? String ?: "N/A"
+                                                )
+                                            } else null
                                             ChatMessage(
                                                 text = map["text"] as? String ?: "",
                                                 isUser = map["isUser"] as? Boolean ?: false,
-                                                isThinking = false
+                                                isThinking = false,
+                                                recipe = recipe
                                             )
                                         } else null
                                     }
@@ -448,15 +464,29 @@ fun ChatScreen(
                                     viewModel.activeAiResponse = null
                                     showHistorySidebar = false
                                 }
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
                                 text = chatTitle,
                                 color = if (isSelected) Color.White else inactiveTextCol,
                                 fontSize = 14.sp,
                                 maxLines = 1,
-                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
                             )
+                            IconButton(
+                                onClick = { chatToDelete = sessionId },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = if (isSelected) Color.White else ErrorRed,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -508,10 +538,40 @@ fun ChatScreen(
             }
         )
     }
+
+    // Delete chat dialog
+    chatToDelete?.let { chatId ->
+        val chatTitleToDelete = chatSessions.find { it["id"] as? String == chatId }?.get("title") as? String ?: "this chat"
+        AlertDialog(
+            onDismissRequest = { chatToDelete = null },
+            title = { Text("Delete Chat", textAlign = androidx.compose.ui.text.style.TextAlign.Center) },
+            text = { Text("Are you sure you want to delete $chatTitleToDelete?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    com.cookbook.backend.FirebaseManager.deleteChatSession(chatId) {
+                        com.cookbook.backend.FirebaseManager.loadChatSessions { sessions ->
+                            chatSessions = sessions
+                        }
+                        if (viewModel.activeChatId == chatId) {
+                            viewModel.startNewChatSession(ChatMessage(initialGreeting, isUser = false))
+                        }
+                    }
+                    chatToDelete = null
+                }) {
+                    Text("Yes", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { chatToDelete = null }) {
+                    Text("No")
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
+fun ChatBubble(message: ChatMessage, onAddToCart: ((ParsedResponse) -> Unit)? = null) {
     val alignment = if (message.isUser) Alignment.End else Alignment.Start
     val bgColor = if (message.isUser) ChatUserBubble else ChatAiBubble
     val textColor = if (message.isUser) White else DarkGray
@@ -547,6 +607,29 @@ fun ChatBubble(message: ChatMessage) {
                     color = textColor,
                     fontSize = 14.sp
                 )
+            }
+        }
+        
+        if (message.recipe != null && onAddToCart != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.widthIn(max = 280.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(
+                    onClick = { onAddToCart(message.recipe) },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(GreenPrimary)
+                ) {
+                    Icon(
+                        Icons.Default.ShoppingCart,
+                        contentDescription = "Add to list",
+                        tint = White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }

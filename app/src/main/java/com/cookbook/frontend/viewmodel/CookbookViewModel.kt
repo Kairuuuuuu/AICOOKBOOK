@@ -183,9 +183,28 @@ class CookbookViewModel : ViewModel() {
             displayName = "New Food"
         }
         val newItem = PantryItem(name = displayName, qty = qty, expDate = expDate)
-        PantryBackend.savedPantryItems.add(newItem)
+        PantryBackend.savedPantryItems.add(0, newItem)
         _state.update { it.copy(pantryItems = PantryBackend.savedPantryItems.toList()) }
         syncToCloud()
+    }
+
+    fun editPantryItem(oldItem: PantryItem, newName: String, newQty: String, newExpDate: String) {
+        val index = PantryBackend.savedPantryItems.indexOf(oldItem)
+        if (index != -1) {
+            val updatedItem = oldItem.copy(name = newName, qty = newQty, expDate = newExpDate)
+            PantryBackend.savedPantryItems[index] = updatedItem
+            _state.update { it.copy(pantryItems = PantryBackend.savedPantryItems.toList()) }
+            syncToCloud()
+        }
+    }
+
+    fun deletePantryItem(item: PantryItem) {
+        val index = PantryBackend.savedPantryItems.indexOf(item)
+        if (index != -1) {
+            PantryBackend.savedPantryItems.removeAt(index)
+            _state.update { it.copy(pantryItems = PantryBackend.savedPantryItems.toList()) }
+            syncToCloud()
+        }
     }
 
     fun refreshPantry() {
