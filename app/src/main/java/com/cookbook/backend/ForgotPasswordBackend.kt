@@ -2,31 +2,32 @@ package com.cookbook.backend
 
 object ForgotPasswordBackend {
 
-    sealed class PasswordChangeResult {
-        data object Success : PasswordChangeResult()
-        data class Error(val message: String) : PasswordChangeResult()
-    }
-
-    suspend fun processPasswordChange(
+    fun processPasswordChange(
         email: String,
         newPassword: String,
-        confirmPassword: String
-    ): PasswordChangeResult {
+        confirmPassword: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
         if (newPassword.isBlank() || confirmPassword.isBlank()) {
-            return PasswordChangeResult.Error("Please enter a new password!")
+            onError("Please enter a new password!")
+            return
         }
         if (newPassword != confirmPassword) {
-            return PasswordChangeResult.Error("Passwords do not match!")
+            onError("Passwords do not match!")
+            return
         }
         if (newPassword.length < 6) {
-            return PasswordChangeResult.Error("Password must be at least 6 characters!")
+            onError("Password must be at least 6 characters!")
+            return
         }
 
-        val result = FirebaseManager.changePassword(email, newPassword)
-        return if (result == "SUCCESS") {
-            PasswordChangeResult.Success
-        } else {
-            PasswordChangeResult.Error(result)
+        FirebaseManager.changePassword(newPassword) { result ->
+            if (result == "SUCCESS") {
+                onSuccess()
+            } else {
+                onError(result)
+            }
         }
     }
 }

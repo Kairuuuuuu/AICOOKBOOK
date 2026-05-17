@@ -2,38 +2,39 @@ package com.cookbook.backend
 
 object ChangePasswordService {
 
-    sealed class PasswordUpdateResult {
-        data object Success : PasswordUpdateResult()
-        data class Error(val message: String) : PasswordUpdateResult()
-        data object RequiresReauth : PasswordUpdateResult()
-    }
-
-    suspend fun updatePassword(
+    fun updatePassword(
         email: String,
         currentPassword: String,
         newPassword: String,
-        confirmPassword: String
-    ): PasswordUpdateResult {
+        confirmPassword: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
         if (newPassword.isBlank() || confirmPassword.isBlank()) {
-            return PasswordUpdateResult.Error("Please enter a new password!")
+            onError("Please enter a new password!")
+            return
         }
         if (newPassword != confirmPassword) {
-            return PasswordUpdateResult.Error("Passwords do not match!")
+            onError("Passwords do not match!")
+            return
         }
         if (newPassword.length < 6) {
-            return PasswordUpdateResult.Error("Password must be at least 6 characters!")
+            onError("Password must be at least 6 characters!")
+            return
         }
 
-        val loginResult = FirebaseManager.loginUser(email, currentPassword)
-        if (loginResult != "SUCCESS") {
-            return PasswordUpdateResult.Error("Current password is incorrect.")
-        }
-
-        val result = FirebaseManager.changePassword(email, newPassword)
-        return if (result == "SUCCESS") {
-            PasswordUpdateResult.Success
-        } else {
-            PasswordUpdateResult.Error(result)
+        FirebaseManager.loginUser(email, currentPassword) { loginResult ->
+            if (loginResult != "SUCCESS") {
+                onError("Current password is incorrect.")
+            } else {
+                FirebaseManager.changePassword(newPassword) { result ->
+                    if (result == "SUCCESS") {
+                        onSuccess()
+                    } else {
+                        onError(result)
+                    }
+                }
+            }
         }
     }
 }

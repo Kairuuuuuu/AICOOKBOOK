@@ -2,27 +2,32 @@ package com.cookbook.backend
 
 object SignUpBackend {
 
-    sealed class SignUpResult {
-        data object Success : SignUpResult()
-        data class Error(val message: String) : SignUpResult()
-    }
-
-    suspend fun attemptSignUp(email: String, password: String, confirmPassword: String): SignUpResult {
+    fun attemptSignUp(
+        email: String,
+        password: String,
+        confirmPassword: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
         if (password.isBlank() || confirmPassword.isBlank()) {
-            return SignUpResult.Error("Password fields cannot be empty!")
+            onError("Password fields cannot be empty!")
+            return
         }
         if (password != confirmPassword) {
-            return SignUpResult.Error("Passwords do not match!")
+            onError("Passwords do not match!")
+            return
         }
         if (password.length < 6) {
-            return SignUpResult.Error("Password must be at least 6 characters!")
+            onError("Password must be at least 6 characters!")
+            return
         }
 
-        val result = FirebaseManager.signUpUser(email, password)
-        return if (result == "SUCCESS") {
-            SignUpResult.Success
-        } else {
-            SignUpResult.Error(result)
+        FirebaseManager.signUpUser(email, password) { result ->
+            if (result == "SUCCESS") {
+                onSuccess()
+            } else {
+                onError(result)
+            }
         }
     }
 }

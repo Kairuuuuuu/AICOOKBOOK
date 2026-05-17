@@ -28,93 +28,101 @@ class CookbookViewModel : ViewModel() {
     private val _state = MutableStateFlow(CookbookState())
     val state: StateFlow<CookbookState> = _state.asStateFlow()
 
-    fun clearError() = _state.update { it.copy(errorMessage = null) }
-    fun clearToast() = _state.update { it.copy(toastMessage = null) }
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
+    }
 
+    fun clearToast() {
+        _state.update { it.copy(toastMessage = null) }
+    }
 
-    // --- Auth ---
+    private fun syncToCloud() {
+        FirebaseManager.saveUserDataToCloud(
+            _state.value.currentBudget,
+            PantryBackend.savedPantryItems,
+            _state.value.currentRecipeName
+        )
+    }
 
     fun login(email: String, password: String) {
         _state.update { it.copy(isLoading = true, errorMessage = null) }
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = AuthenticationService.attemptLogin(email, password)) {
-                is AuthenticationService.LoginResult.Success -> {
-                    UserProfileBackend.email = result.email
-                    UserProfileBackend.firstName = result.firstName
+        AuthenticationService.attemptLogin(
+            email = email,
+            password = password,
+            onResult = { resultEmail, firstName ->
+                UserProfileBackend.email = resultEmail
+                UserProfileBackend.firstName = firstName
+                FirebaseManager.loadUserDataFromCloud { savedBudget, savedPantry, savedRecipe ->
+                    PantryBackend.savedPantryItems.clear()
+                    PantryBackend.savedPantryItems.addAll(savedPantry)
                     _state.update {
                         it.copy(
                             isLoading = false,
-                            userEmail = result.email,
-                            firstName = result.firstName
+                            userEmail = resultEmail,
+                            firstName = firstName,
+                            currentBudget = savedBudget,
+                            pantryItems = savedPantry,
+                            currentRecipeName = savedRecipe
                         )
                     }
                 }
-                is AuthenticationService.LoginResult.Error -> {
-                    _state.update { it.copy(isLoading = false, errorMessage = result.message) }
-                }
+            },
+            onError = { errorMsg ->
+                _state.update { it.copy(isLoading = false, errorMessage = errorMsg) }
             }
-        }
+        )
     }
 
     fun signUp(email: String, password: String, confirmPassword: String) {
         _state.update { it.copy(isLoading = true, errorMessage = null) }
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = SignUpBackend.attemptSignUp(email, password, confirmPassword)) {
-                is SignUpBackend.SignUpResult.Success -> {
-                    _state.update { it.copy(isLoading = false, userEmail = email, signUpSuccess = true) }
-                }
-                is SignUpBackend.SignUpResult.Error -> {
-                    _state.update { it.copy(isLoading = false, errorMessage = result.message) }
-                }
+        SignUpBackend.attemptSignUp(
+            email = email,
+            password = password,
+            confirmPassword = confirmPassword,
+            onSuccess = {
+                _state.update { it.copy(isLoading = false, userEmail = email, signUpSuccess = true) }
+            },
+            onError = { errorMsg ->
+                _state.update { it.copy(isLoading = false, errorMessage = errorMsg) }
             }
-        }
+        )
     }
 
-    fun changePassword(email: String, currentPassword: String,
-                       newPassword: String, confirmPassword: String) {
+    fun changePassword(email: String, currentPassword: String, newPassword: String, confirmPassword: String) {
         _state.update { it.copy(isLoading = true, errorMessage = null) }
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = ChangePasswordService.updatePassword(
-                email, currentPassword, newPassword, confirmPassword)) {
-                is ChangePasswordService.PasswordUpdateResult.Success -> {
-                    _state.update { it.copy(isLoading = false, passwordChangeSuccess = true) }
-                }
-                is ChangePasswordService.PasswordUpdateResult.Error -> {
-                    _state.update { it.copy(isLoading = false, errorMessage = result.message) }
-                }
-                is ChangePasswordService.PasswordUpdateResult.RequiresReauth -> {
-                    _state.update {
-                        it.copy(isLoading = false,
-                            errorMessage = "Please log out and log in again to change your password.")
-                    }
-                }
+        ChangePasswordService.updatePassword(
+            email = email,
+            currentPassword = currentPassword,
+            newPassword = newPassword,
+            confirmPassword = confirmPassword,
+            onSuccess = {
+                _state.update { it.copy(isLoading = false, passwordChangeSuccess = true) }
+            },
+            onError = { errorMsg ->
+                _state.update { it.copy(isLoading = false, errorMessage = errorMsg) }
             }
-        }
+        )
     }
 
     fun forgotPasswordChange(email: String, newPassword: String, confirmPassword: String) {
         _state.update { it.copy(isLoading = true, errorMessage = null) }
-        viewModelScope.launch(Dispatchers.IO) {
-            when (val result = ForgotPasswordBackend.processPasswordChange(
-                email, newPassword, confirmPassword)) {
-                is ForgotPasswordBackend.PasswordChangeResult.Success -> {
-                    _state.update { it.copy(isLoading = false, passwordChangeSuccess = true) }
-                }
-                is ForgotPasswordBackend.PasswordChangeResult.Error -> {
-                    _state.update { it.copy(isLoading = false, errorMessage = result.message) }
-                }
+        ForgotPasswordBackend.processPasswordChange(
+            email = email,
+            newPassword = newPassword,
+            confirmPassword = confirmPassword,
+            onSuccess = {
+                _state.update { it.copy(isLoading = false, passwordChangeSuccess = true) }
+            },
+            onError = { errorMsg ->
+                _state.update { it.copy(isLoading = false, errorMessage = errorMsg) }
             }
-        }
+        )
     }
 
     fun logout() {
         UserProfileBackend.performLogout()
-        _state.update {
-            CookbookState()
-        }
+        _state.update { CookbookState() }
     }
-
-    // --- Email / OTP ---
 
     suspend fun sendOTP(email: String): OTPResult {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -130,9 +138,7 @@ class CookbookViewModel : ViewModel() {
         }
     }
 
-    // --- Budget ---
-
-    fun setBudget(input: String) {
+    fun setBudget(input: String): Boolean {
         val result = BudgetService.validateBudget(input, _state.value.currentTotalCost)
         if (result.isValid) {
             _state.update {
@@ -142,26 +148,28 @@ class CookbookViewModel : ViewModel() {
                     toastMessage = "Budget successfully updated!"
                 )
             }
+            syncToCloud()
+            return true
         } else {
             _state.update { it.copy(errorMessage = result.errorMessage) }
+            return false
         }
     }
 
-    // --- Pantry ---
-
     fun addPantryItem(name: String, qty: String, expDate: String) {
-        val displayName = name.ifBlank { "New Food" }
-        PantryBackend.savedPantryItems.add(
-            PantryItem(name = displayName, qty = qty, expDate = expDate)
-        )
+        var displayName = name
+        if (name.trim() == "") {
+            displayName = "New Food"
+        }
+        val newItem = PantryItem(name = displayName, qty = qty, expDate = expDate)
+        PantryBackend.savedPantryItems.add(newItem)
         _state.update { it.copy(pantryItems = PantryBackend.savedPantryItems.toList()) }
+        syncToCloud()
     }
 
     fun refreshPantry() {
         _state.update { it.copy(pantryItems = PantryBackend.savedPantryItems.toList()) }
     }
-
-    // --- AI Chat ---
 
     fun sendChatMessage(message: String) {
         _state.update { it.copy(isLoading = true, errorMessage = null) }
@@ -173,22 +181,21 @@ class CookbookViewModel : ViewModel() {
 
     fun generateFromPantry(): String? {
         val prompt = Chatbackend.generatePromptFromPantry(PantryBackend.savedPantryItems)
-        if (prompt == null && PantryBackend.savedPantryItems.isEmpty()) {
-            _state.update { it.copy(errorMessage = "Your pantry is empty. Add items first!") }
-        } else if (prompt == null) {
-            _state.update { it.copy(errorMessage = "All items in your pantry have expired.") }
+        if (prompt == null) {
+            if (PantryBackend.savedPantryItems.isEmpty()) {
+                _state.update { it.copy(errorMessage = "Your pantry is empty. Add items first!") }
+            } else {
+                _state.update { it.copy(errorMessage = "All items in your pantry have expired.") }
+            }
         } else {
             _state.update { it.copy(pendingPantryPrompt = prompt, isFromPantry = true) }
         }
         return prompt
     }
 
-    // --- Recipe Management ---
-
     fun saveRecipeToMenu(aiResponse: ParsedResponse) {
         val analysis = Chatbackend.analyzeRecipe(aiResponse, _state.value.currentBudget)
-        Chatbackend.saveRecipeToMenu(aiResponse) { recipeName, ingredients, fullIngredients,
-                                                     checked, calories, protein, totalCost ->
+        Chatbackend.saveRecipeToMenu(aiResponse) { recipeName, ingredients, fullIngredients, checked, calories, protein, totalCost ->
             val missingLabel = ShoppingListBackend.computeMissingCount(ingredients, checked)
             _state.update {
                 it.copy(
@@ -202,14 +209,14 @@ class CookbookViewModel : ViewModel() {
                     savedMissingIngredients = missingLabel
                 )
             }
+            syncToCloud()
         }
     }
 
     fun toggleIngredientCheck(index: Int, isChecked: Boolean) {
         val newChecked = _state.value.checkedIngredients.toMutableList()
         ShoppingListBackend.updateCheckedState(newChecked, index, isChecked)
-        val missingLabel = ShoppingListBackend.computeMissingCount(
-            _state.value.currentIngredients, newChecked)
+        val missingLabel = ShoppingListBackend.computeMissingCount(_state.value.currentIngredients, newChecked)
         _state.update {
             it.copy(checkedIngredients = newChecked, savedMissingIngredients = missingLabel)
         }
@@ -239,6 +246,7 @@ class CookbookViewModel : ViewModel() {
                 pantryItems = PantryBackend.savedPantryItems.toList()
             )
         }
+        syncToCloud()
     }
 
     fun clearRecipe() {
@@ -256,5 +264,6 @@ class CookbookViewModel : ViewModel() {
                 pendingPantryPrompt = null
             )
         }
+        syncToCloud()
     }
 }

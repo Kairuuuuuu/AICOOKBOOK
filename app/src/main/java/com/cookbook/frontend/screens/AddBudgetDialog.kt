@@ -87,8 +87,8 @@ fun AddBudgetDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    viewModel.setBudget(budgetInput)
-                    if (state.errorMessage == null) {
+                    val success = viewModel.setBudget(budgetInput)
+                    if (success) {
                         onDismiss()
                     }
                 },
