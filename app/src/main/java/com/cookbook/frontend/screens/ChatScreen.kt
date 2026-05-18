@@ -339,7 +339,8 @@ fun ChatScreen(
                 viewModel = viewModel,
                 onDismiss = { showSideMenu = false },
                 onChangePassword = { },
-                onLogout = { }
+                onLogout = { },
+                onDeleteAccount = { }
             )
         }
 

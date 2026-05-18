@@ -216,6 +216,41 @@ object FirebaseManager {
             }
     }
 
+    fun deleterUserAccount(onResult: (String?) -> Unit) {
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser == null) {
+            onResult("No user logged in.")
+            return
+        }
+        val db = FirebaseFirestore.getInstance()
+        val userDocRef = db.collection("users").document(currentUser.uid)
+        val chatsCollection = userDocRef.collection("chats")
+
+        chatsCollection.get().addOnSuccessListener { snapshot ->
+            val batch = db.batch()
+            for (doc in snapshot.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.delete(userDocRef)
+            
+            batch.commit().addOnCompleteListener { batchTask ->
+                if (batchTask.isSuccessful) {
+                    currentUser.delete().addOnCompleteListener { task ->
+                        if (task.isSuccessful) {
+                            onResult("Success")
+                        } else {
+                            onResult(mapFirebaseError(task.exception))
+                        }
+                    }
+                } else {
+                    onResult("Failed to delete user data: ${batchTask.exception?.message}")
+                }
+            }
+        }.addOnFailureListener { e ->
+            onResult("Failed to access user data: ${e.message}")
+        }
+    }
+
     private fun mapFirebaseError(exception: Exception?): String {
         if (exception !is FirebaseAuthException) {
             if (exception != null) {
@@ -234,6 +269,7 @@ object FirebaseManager {
             "ERROR_USER_DISABLED" -> "This account has been disabled."
             "ERROR_OPERATION_NOT_ALLOWED" -> "This operation is not allowed."
             "ERROR_REQUIRES_RECENT_LOGIN" -> "Please log out and log in again before changing your password."
+            "ERROR_DELETE_ACCOUNT" -> "Failed to Delete Account."
             else -> exception.message.toString()
         }
     }

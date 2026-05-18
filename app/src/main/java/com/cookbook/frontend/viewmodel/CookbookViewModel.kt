@@ -306,4 +306,17 @@ class CookbookViewModel : ViewModel() {
         }
         syncToCloud()
     }
+    fun deleteAccount(onResult: (Boolean, String?) -> Unit) {
+        _state.update { it.copy(isLoading = true, errorMessage = null) }
+        FirebaseManager.deleterUserAccount { result ->
+            _state.update { it.copy(isLoading = false) }
+            if (result == "Success") {
+                logout() // Clear local state
+                onResult(true, null)
+            } else {
+                _state.update { it.copy(errorMessage = result) }
+                onResult(false, result)
+            }
+        }
+    }
 }

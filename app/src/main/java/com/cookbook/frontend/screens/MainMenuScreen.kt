@@ -320,6 +320,16 @@ fun MainMenuScreen(
             onLogout = {
                 showSideMenu = false
                 onLogout()
+            },
+            onDeleteAccount = {
+                showSideMenu = false
+                viewModel.deleteAccount { success, errorMsg ->
+                    if (success) {
+                        onLogout()
+                    } else if (errorMsg != null) {
+                        // Show error message
+                    }
+                }
             }
         )
     }
@@ -431,12 +441,14 @@ fun SideMenuOverlay(
     viewModel: CookbookViewModel,
     onDismiss: () -> Unit,
     onChangePassword: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onDeleteAccount: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
     var showEditProfile by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showDeleteAccount by remember {mutableStateOf(false)}
 
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -511,6 +523,7 @@ fun SideMenuOverlay(
                 SideMenuItem(Icons.Default.Lock, "Change Password") { onChangePassword() }
                 SideMenuItem(Icons.Default.Logout, "Logout") { showLogoutConfirm = true }
                 SideMenuItem(Icons.Default.Help, "Help & FAQs") { showHelp = true }
+                SideMenuItem(Icons.Default.Delete, "Delete Account"){showDeleteAccount = true}
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -564,6 +577,27 @@ fun SideMenuOverlay(
             dismissButton = {
                 TextButton(onClick = { showLogoutConfirm = false }) {
                     Text("No")
+                }
+            }
+        )
+    }
+
+    if (showDeleteAccount) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccount = false },
+            title = { Text("Delete Account") },
+            text = { Text("Are you sure you want to permanently delete your account? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteAccount = false
+                    onDeleteAccount()
+                }) {
+                    Text("Delete", color = ErrorRed)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccount = false }) {
+                    Text("Cancel")
                 }
             }
         )
