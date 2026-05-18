@@ -263,7 +263,8 @@ fun PantryScreen(
     }
 
     // Edit item dialog
-    itemToEdit?.let { item ->
+    if (itemToEdit != null) {
+        val item = itemToEdit!!
         EditPantryItemDialog(
             item = item,
             onDismiss = { itemToEdit = null },
@@ -275,7 +276,8 @@ fun PantryScreen(
     }
 
     // Delete item dialog
-    itemToDelete?.let { item ->
+    if (itemToDelete != null) {
+        val item = itemToDelete!!
         AlertDialog(
             onDismissRequest = { itemToDelete = null },
             title = { Text("Delete Item", textAlign = TextAlign.Center) },
@@ -523,7 +525,8 @@ fun AddPantryItemDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
+                    if (datePickerState.selectedDateMillis != null) {
+                        val millis = datePickerState.selectedDateMillis!!
                         val date = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
                         expDate = date.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))
                         dateError = false
@@ -654,7 +657,8 @@ fun EditPantryItemDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { millis ->
+                    if (datePickerState.selectedDateMillis != null) {
+                        val millis = datePickerState.selectedDateMillis!!
                         val date = java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
                         expDate = date.format(DateTimeFormatter.ofPattern("MM/dd/yyyy"))
                         dateError = false

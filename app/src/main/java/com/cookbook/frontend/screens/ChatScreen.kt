@@ -135,7 +135,10 @@ fun ChatScreen(
             viewModel.activeChatId = activeChatId
         }
 
-        val chatTitle = finalMessages.firstOrNull { it.isUser }?.text?.take(25)?.let { "$it..." } ?: "New Chat"
+        val firstUserMsg = finalMessages.firstOrNull { it.isUser }
+        val firstUserText = if (firstUserMsg != null) firstUserMsg.text else null
+        val titlePrefix = if (firstUserText != null) firstUserText.take(25) else null
+        val chatTitle = if (titlePrefix != null) "$titlePrefix..." else "New Chat"
         val messagesData = finalMessages.map {
             val map = mutableMapOf<String, Any>(
                 "text" to it.text,
@@ -423,8 +426,10 @@ fun ChatScreen(
                     modifier = Modifier.weight(1f)
                 ) {
                     itemsIndexed(chatSessions) { index, session ->
-                        val sessionId = session["id"] as? String ?: ""
-                        val chatTitle = session["title"] as? String ?: "Chat"
+                        val rawSessionId = session["id"] as? String
+                        val sessionId = if (rawSessionId != null) rawSessionId else ""
+                        val rawChatTitle = session["title"] as? String
+                        val chatTitle = if (rawChatTitle != null) rawChatTitle else "Chat"
                         val isSelected = sessionId == viewModel.activeChatId
 
                         Row(
@@ -435,25 +440,46 @@ fun ChatScreen(
                                 .background(if (isSelected) highlightCol else Color.Transparent)
                                 .clickable {
                                     viewModel.activeChatId = sessionId
-                                    val rawMessages = session["messages"] as? List<*> ?: emptyList<Any>()
+                                    val rawMessagesList = session["messages"] as? List<*>
+                                    val rawMessages = if (rawMessagesList != null) rawMessagesList else emptyList<Any>()
 
                                     val parsed = rawMessages.mapNotNull {
                                         val map = it as? Map<*, *>
                                         if (map != null) {
-                                            val hasRecipe = map["hasRecipe"] as? Boolean ?: false
+                                            val rawHasRecipe = map["hasRecipe"] as? Boolean
+                                            val hasRecipe = if (rawHasRecipe != null) rawHasRecipe else false
                                             val recipe = if (hasRecipe) {
+                                                val rawRecipeName = map["recipeName"] as? String
+                                                val recipeNameParam = if (rawRecipeName != null) rawRecipeName else ""
+                                                val rawIngredientsList = map["ingredients"] as? List<*>
+                                                val ingredientsParam = if (rawIngredientsList != null) {
+                                                    rawIngredientsList.mapNotNull { item -> item as? String }
+                                                } else emptyList()
+                                                val rawTotalEstimatedCost = map["totalEstimatedCost"] as? Number
+                                                val totalEstimatedCostParam = if (rawTotalEstimatedCost != null) rawTotalEstimatedCost.toDouble() else 0.0
+                                                val rawCalories = map["calories"] as? String
+                                                val caloriesParam = if (rawCalories != null) rawCalories else "N/A"
+                                                val rawProtein = map["protein"] as? String
+                                                val proteinParam = if (rawProtein != null) rawProtein else "N/A"
+
                                                 ParsedResponse(
-                                                    recipeName = map["recipeName"] as? String ?: "",
-                                                    ingredients = (map["ingredients"] as? List<*>)?.mapNotNull { item -> item as? String } ?: emptyList(),
+                                                    recipeName = recipeNameParam,
+                                                    ingredients = ingredientsParam,
                                                     hasRecipe = true,
-                                                    totalEstimatedCost = (map["totalEstimatedCost"] as? Number)?.toDouble() ?: 0.0,
-                                                    calories = map["calories"] as? String ?: "N/A",
-                                                    protein = map["protein"] as? String ?: "N/A"
+                                                    totalEstimatedCost = totalEstimatedCostParam,
+                                                    calories = caloriesParam,
+                                                    protein = proteinParam
                                                 )
                                             } else null
+
+                                            val rawText = map["text"] as? String
+                                            val textParam = if (rawText != null) rawText else ""
+                                            val rawIsUser = map["isUser"] as? Boolean
+                                            val isUserParam = if (rawIsUser != null) rawIsUser else false
+
                                             ChatMessage(
-                                                text = map["text"] as? String ?: "",
-                                                isUser = map["isUser"] as? Boolean ?: false,
+                                                text = textParam,
+                                                isUser = isUserParam,
                                                 isThinking = false,
                                                 recipe = recipe
                                             )
@@ -503,7 +529,7 @@ fun ChatScreen(
             text = { Text("Do you want to add missing ingredients to the shopping list?") },
             confirmButton = {
                 TextButton(onClick = {
-                    viewModel.activeAiResponse?.let { viewModel.saveRecipeToMenu(it) }
+                    if (viewModel.activeAiResponse != null) { viewModel.saveRecipeToMenu(viewModel.activeAiResponse!!) }
                     showConfirmDialog = false
                     viewModel.activeAiResponse = null
                 }) {
@@ -541,8 +567,14 @@ fun ChatScreen(
     }
 
     // Delete chat dialog
-    chatToDelete?.let { chatId ->
-        val chatTitleToDelete = chatSessions.find { it["id"] as? String == chatId }?.get("title") as? String ?: "this chat"
+    if (chatToDelete != null) {
+        val chatId = chatToDelete!!
+        val sessionMatch = chatSessions.find { 
+            val rawId = it["id"] as? String
+            if (rawId != null) rawId == chatId else false
+        }
+        val rawTitle = if (sessionMatch != null) sessionMatch["title"] as? String else null
+        val chatTitleToDelete = if (rawTitle != null) rawTitle else "this chat"
         AlertDialog(
             onDismissRequest = { chatToDelete = null },
             title = { Text("Delete Chat", textAlign = androidx.compose.ui.text.style.TextAlign.Center) },

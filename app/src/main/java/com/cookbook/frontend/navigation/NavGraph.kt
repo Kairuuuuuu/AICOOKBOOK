@@ -12,10 +12,6 @@ import com.cookbook.ui.viewmodel.CookbookViewModel
 
 object Routes {
     const val LOGIN = "login"
-    const val ENTER_EMAIL = "enter_email/{isForgotPassword}"
-    const val VERIFICATION_CODE = "verification_code/{isForgotPassword}/{email}"
-    const val SIGN_UP = "sign_up/{email}"
-    const val FORGOT_PASSWORD = "forgot_password/{email}"
     const val MAIN_MENU = "main_menu"
     const val CHAT = "chat"
     const val PANTRY = "pantry"
@@ -41,7 +37,8 @@ fun NavGraph(viewModel: CookbookViewModel = viewModel()) {
             "enter_email/{isForgotPassword}",
             arguments = listOf(navArgument("isForgotPassword") { type = NavType.BoolType })
         ) { backStackEntry ->
-            val isForgot = backStackEntry.arguments?.getBoolean("isForgotPassword") ?: false
+            val rawIsForgot = backStackEntry.arguments?.getBoolean("isForgotPassword")
+            val isForgot = if (rawIsForgot != null) rawIsForgot else false
             EnterEmailScreen(
                 isForgotPassword = isForgot,
                 viewModel = viewModel,
@@ -63,9 +60,12 @@ fun NavGraph(viewModel: CookbookViewModel = viewModel()) {
                 navArgument("sentCode") { type = NavType.StringType }
             )
         ) { backStackEntry ->
-            val isForgot = backStackEntry.arguments?.getBoolean("isForgotPassword") ?: false
-            val email = backStackEntry.arguments?.getString("email") ?: ""
-            val sentCode = backStackEntry.arguments?.getString("sentCode") ?: ""
+            val rawIsForgot = backStackEntry.arguments?.getBoolean("isForgotPassword")
+            val isForgot = if (rawIsForgot != null) rawIsForgot else false
+            val rawEmail = backStackEntry.arguments?.getString("email")
+            val email = if (rawEmail != null) rawEmail else ""
+            val rawSentCode = backStackEntry.arguments?.getString("sentCode")
+            val sentCode = if (rawSentCode != null) rawSentCode else ""
             VerificationCodeScreen(
                 isForgotPassword = isForgot,
                 userEmail = email,
@@ -89,8 +89,10 @@ fun NavGraph(viewModel: CookbookViewModel = viewModel()) {
             "sign_up/{email}",
             arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { backStackEntry ->
+            val rawEmail = backStackEntry.arguments?.getString("email")
+            val emailParam = if (rawEmail != null) rawEmail else ""
             SignUpScreen(
-                email = backStackEntry.arguments?.getString("email") ?: "",
+                email = emailParam,
                 viewModel = viewModel,
                 onSignUpSuccess = {
                     navController.navigate(Routes.LOGIN) { popUpTo(Routes.LOGIN) { inclusive = true } }
@@ -105,8 +107,10 @@ fun NavGraph(viewModel: CookbookViewModel = viewModel()) {
             "forgot_password/{email}",
             arguments = listOf(navArgument("email") { type = NavType.StringType })
         ) { backStackEntry ->
+            val rawEmail = backStackEntry.arguments?.getString("email")
+            val emailParam = if (rawEmail != null) rawEmail else ""
             ForgotPasswordScreen(
-                email = backStackEntry.arguments?.getString("email") ?: "",
+                email = emailParam,
                 viewModel = viewModel,
                 onSuccess = {
                     navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }

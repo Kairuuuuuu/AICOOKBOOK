@@ -15,8 +15,9 @@ object ShoppingListBackend {
             return
         }
 
-        imageCache[searchKeyword]?.let {
-            onResult(it)
+        val cachedImage = imageCache[searchKeyword]
+        if (cachedImage != null) {
+            onResult(cachedImage)
             return
         }
 

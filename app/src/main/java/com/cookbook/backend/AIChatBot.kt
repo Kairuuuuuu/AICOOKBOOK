@@ -67,7 +67,8 @@ object AIChatBot {
 
             val response = httpClient.newCall(request).execute()
             if (response.isSuccessful) {
-                parseGroqResponse(response.body?.string() ?: "")
+                val rawBody = response.body?.string()
+                parseGroqResponse(if (rawBody != null) rawBody else "")
             } else {
                 ParsedResponse(recipeName = "Request unsuccessful. Please try again later.", hasRecipe = false)
             }
@@ -155,20 +156,29 @@ object AIChatBot {
             val ingredientsArray = recipeJson.getAsJsonArray("ingredients")
             ingredientsArray?.forEach { item ->
                 val obj = item.asJsonObject
-                val name = obj.get("name")?.asString ?: ""
-                val price = obj.get("estimated_price_php")?.asDouble ?: 0.0
+                val rawName = obj.get("name")?.asString
+                val name = if (rawName != null) rawName else ""
+                val rawPrice = obj.get("estimated_price_php")?.asDouble
+                val price = if (rawPrice != null) rawPrice else 0.0
                 ingredients.add("$name (Php %.2f)".format(price))
             }
 
             val nutrition = recipeJson.getAsJsonObject("nutrition")
-            val calories = nutrition?.get("calories")?.asString ?: "N/A"
-            val protein = nutrition?.get("protein")?.asString ?: "N/A"
+            val rawCalories = nutrition?.get("calories")?.asString
+            val calories = if (rawCalories != null) rawCalories else "N/A"
+            val rawProtein = nutrition?.get("protein")?.asString
+            val protein = if (rawProtein != null) rawProtein else "N/A"
+
+            val rawRecipeName = recipeJson.get("recipe_name")?.asString
+            val parsedRecipeName = if (rawRecipeName != null) rawRecipeName else "AI Suggested Recipe"
+            val rawCost = recipeJson.get("total_estimated_cost_php")?.asDouble
+            val parsedTotalCost = if (rawCost != null) rawCost else 0.0
 
             ParsedResponse(
-                recipeName = recipeJson.get("recipe_name")?.asString ?: "AI Suggested Recipe",
+                recipeName = parsedRecipeName,
                 ingredients = ingredients,
                 hasRecipe = ingredients.isNotEmpty(),
-                totalEstimatedCost = recipeJson.get("total_estimated_cost_php")?.asDouble ?: 0.0,
+                totalEstimatedCost = parsedTotalCost,
                 calories = calories,
                 protein = protein
             )

@@ -162,7 +162,8 @@ object FirebaseManager {
     // --- NEW: CHAT HISTORY FUNCTIONS ---
 
     fun saveChatSession(chatId: String, title: String, messages: List<Map<String, Any>>) {
-        val currentUser = FirebaseAuth.getInstance().currentUser ?: return
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser == null) return
         val db = FirebaseFirestore.getInstance()
 
         val chatData = hashMapOf(

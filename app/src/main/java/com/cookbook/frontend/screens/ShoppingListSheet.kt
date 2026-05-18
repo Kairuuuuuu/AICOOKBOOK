@@ -40,7 +40,7 @@ fun ShoppingListSheet(
     LaunchedEffect(state.currentRecipeName) {
         if (state.currentRecipeName != "No meal selected") {
             ShoppingListBackend.fetchRecipeImage(state.currentRecipeName) { bitmap ->
-                bitmap?.let {
+                if (bitmap != null) {
                     imageUrl = state.currentRecipeName
                 }
             }
