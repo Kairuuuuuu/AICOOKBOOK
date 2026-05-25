@@ -113,11 +113,17 @@ object AIChatBot {
             |If the request passes all previous phases, generate the recipe. 
             |1. Always estimate the price of ingredients in Philippine Peso (PHP) based on realistic market prices.
             |2. Calculate total estimated cost.
+            |3. The "instructions" array MUST contain detailed, step-by-step cooking procedures. Be specific about cooking techniques, times, temperatures, and order of ingredients. Do NOT use overly simplified steps like "Add everything in one go".
             |You must ALWAYS respond in this EXACT JSON format with NO additional text:
             |{
             |  "recipe_name": "Name of the dish",
             |  "ingredients": [
             |    {"name": "ingredient with quantity", "estimated_price_php": 0.00},
+            |    ...
+            |  ],
+            |  "instructions": [
+            |    "Step 1...",
+            |    "Step 2...",
             |    ...
             |  ],
             |  "nutrition": {
@@ -131,7 +137,7 @@ object AIChatBot {
         """.trimMargin()
 
         if (budget.isNotBlank() && budget != "Php 0") {
-            return "$basePrompt\n\nThe user's budget is $budget. Make sure the total cost stays within this budget.\n\nUser request: $userMessage"
+            return "$basePrompt\n\nThe user's budget is $budget. Make sure the total cost stays within this budget, but aim to maximize the budget (i.e. suggest a recipe whose total cost is close to the budget). Do not suggest an extremely cheap recipe if the budget allows for a more premium or complete meal.\n\nUser request: $userMessage"
         }
         return "$basePrompt\n\nUser request: $userMessage"
     }
@@ -163,6 +169,12 @@ object AIChatBot {
                 ingredients.add("$name (Php %.2f)".format(price))
             }
 
+            val instructions = mutableListOf<String>()
+            val instructionsArray = recipeJson.getAsJsonArray("instructions")
+            instructionsArray?.forEach { item ->
+                instructions.add(item.asString)
+            }
+
             val nutrition = recipeJson.getAsJsonObject("nutrition")
             val rawCalories = nutrition?.get("calories")?.asString
             val calories = if (rawCalories != null) rawCalories else "N/A"
@@ -177,6 +189,7 @@ object AIChatBot {
             ParsedResponse(
                 recipeName = parsedRecipeName,
                 ingredients = ingredients,
+                instructions = instructions,
                 hasRecipe = ingredients.isNotEmpty(),
                 totalEstimatedCost = parsedTotalCost,
                 calories = calories,

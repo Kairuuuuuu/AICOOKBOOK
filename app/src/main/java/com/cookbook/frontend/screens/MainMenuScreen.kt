@@ -66,7 +66,7 @@ fun MainMenuScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "Dirk's CookBook",
+                        text = "AI COOKBOOK",
                         style = MaterialTheme.typography.titleMedium,
                         color = White,
                         fontWeight = FontWeight.Bold

@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
 
 class CookbookViewModel : ViewModel() {
 
@@ -145,8 +146,26 @@ class CookbookViewModel : ViewModel() {
         activeAiResponse = null
     }
 
-    suspend fun sendOTP(email: String): OTPResult {
+    suspend fun sendOTP(email: String, isForgotPassword: Boolean = false): OTPResult {
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (!isForgotPassword) {
+                val exists = kotlin.coroutines.suspendCoroutine<Boolean> { cont ->
+                    com.google.firebase.auth.FirebaseAuth.getInstance().fetchSignInMethodsForEmail(email)
+                        .addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                val methods = task.result?.signInMethods
+                                cont.resume(!methods.isNullOrEmpty())
+                            } else {
+                                cont.resume(false)
+                            }
+                        }
+                }
+                if (exists) {
+                    _state.update { it.copy(errorMessage = "This email is already registered.") }
+                    return@withContext OTPResult(status = OTPStatus.INVALID_EMAIL)
+                }
+            }
+
             val result = EmailAuthenticationService.processEmailForOTP(email)
             if (result.status == OTPStatus.SUCCESS) {
                 _state.update { it.copy(userEmail = email, errorMessage = null) }
@@ -223,9 +242,9 @@ class CookbookViewModel : ViewModel() {
         val prompt = Chatbackend.generatePromptFromPantry(PantryBackend.savedPantryItems)
         if (prompt == null) {
             if (PantryBackend.savedPantryItems.isEmpty()) {
-                _state.update { it.copy(errorMessage = "Your pantry is empty. Add items first!") }
+                _state.update { it.copy(toastMessage = "Pantry is empty!") }
             } else {
-                _state.update { it.copy(errorMessage = "All items in your pantry have expired.") }
+                _state.update { it.copy(toastMessage = "All items in your pantry have expired.") }
             }
         } else {
             _state.update { it.copy(pendingPantryPrompt = prompt, isFromPantry = true) }

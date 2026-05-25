@@ -24,7 +24,7 @@ fun AddBudgetDialog(
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
-    var budgetInput by remember { mutableStateOf("") }
+    var budgetInput by remember { mutableStateOf(state.currentBudget.replace("Php ", "").replace(",", "")) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -85,23 +85,34 @@ fun AddBudgetDialog(
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val success = viewModel.setBudget(budgetInput)
-                    if (success) {
-                        onDismiss()
-                    }
-                },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(25.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Save", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = MediumGray)
+                Button(
+                    onClick = {
+                        val success = viewModel.setBudget(budgetInput)
+                        if (success) {
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
+                ) {
+                    Text("Save", fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp),
+                    shape = RoundedCornerShape(22.dp)
+                ) {
+                    Text("Cancel", color = MediumGray)
+                }
             }
         },
         shape = RoundedCornerShape(20.dp)

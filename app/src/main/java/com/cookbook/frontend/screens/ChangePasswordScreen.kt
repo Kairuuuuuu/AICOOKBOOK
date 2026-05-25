@@ -85,7 +85,7 @@ fun ChangePasswordScreen(
             Spacer(modifier = Modifier.height(40.dp))
 
             Text(
-                text = "Dirk's CookBook",
+                text = "AI COOKBOOK",
                 style = MaterialTheme.typography.headlineMedium,
                 color = White,
                 fontWeight = FontWeight.Bold,

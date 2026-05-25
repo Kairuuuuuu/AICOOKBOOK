@@ -60,7 +60,7 @@ fun SignUpScreen(
             Spacer(modifier = Modifier.height(60.dp))
 
             Text(
-                text = "Dirk's CookBook",
+                text = "AI COOKBOOK",
                 style = MaterialTheme.typography.titleLarge,
                 color = White,
                 fontWeight = FontWeight.Bold,

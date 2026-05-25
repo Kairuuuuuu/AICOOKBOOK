@@ -64,7 +64,7 @@ fun VerificationCodeScreen(
                     )
                 }
                 Text(
-                    text = "Dirk's CookBook",
+                    text = "AI COOKBOOK",
                     style = MaterialTheme.typography.titleLarge,
                     color = White,
                     fontWeight = FontWeight.Bold

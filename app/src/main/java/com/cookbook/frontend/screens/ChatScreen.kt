@@ -65,6 +65,7 @@ fun ChatScreen(
     var showSideMenu by remember { mutableStateOf(false) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var showHistorySidebar by remember { mutableStateOf(false) }
+    var showSuccessPopup by remember { mutableStateOf(false) }
 
     // Chat sessions list for sidebar
     var chatSessions by remember { mutableStateOf(listOf<Map<String, Any>>()) }
@@ -148,6 +149,7 @@ fun ChatScreen(
                 map["hasRecipe"] = true
                 map["recipeName"] = it.recipe.recipeName
                 map["ingredients"] = it.recipe.ingredients
+                map["instructions"] = it.recipe.instructions
                 map["totalEstimatedCost"] = it.recipe.totalEstimatedCost
                 map["calories"] = it.recipe.calories
                 map["protein"] = it.recipe.protein
@@ -193,6 +195,7 @@ fun ChatScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(CreamLight)
+                .imePadding()
         ) {
             // Top bar
             CenterAlignedTopAppBar(
@@ -204,7 +207,7 @@ fun ChatScreen(
                     ),
                 title = {
                     Text(
-                        text = "Dirk's CookBook",
+                        text = "AI COOKBOOK",
                         style = MaterialTheme.typography.titleMedium,
                         color = White,
                         fontWeight = FontWeight.Bold
@@ -461,10 +464,15 @@ fun ChatScreen(
                                                 val caloriesParam = if (rawCalories != null) rawCalories else "N/A"
                                                 val rawProtein = map["protein"] as? String
                                                 val proteinParam = if (rawProtein != null) rawProtein else "N/A"
+                                                val rawInstructionsList = map["instructions"] as? List<*>
+                                                val instructionsParam = if (rawInstructionsList != null) {
+                                                    rawInstructionsList.mapNotNull { item -> item as? String }
+                                                } else emptyList()
 
                                                 ParsedResponse(
                                                     recipeName = recipeNameParam,
                                                     ingredients = ingredientsParam,
+                                                    instructions = instructionsParam,
                                                     hasRecipe = true,
                                                     totalEstimatedCost = totalEstimatedCostParam,
                                                     calories = caloriesParam,
@@ -529,7 +537,10 @@ fun ChatScreen(
             text = { Text("Do you want to add missing ingredients to the shopping list?") },
             confirmButton = {
                 TextButton(onClick = {
-                    if (viewModel.activeAiResponse != null) { viewModel.saveRecipeToMenu(viewModel.activeAiResponse!!) }
+                    if (viewModel.activeAiResponse != null) { 
+                        viewModel.saveRecipeToMenu(viewModel.activeAiResponse!!) 
+                        showSuccessPopup = true
+                    }
                     showConfirmDialog = false
                     viewModel.activeAiResponse = null
                 }) {
@@ -553,7 +564,10 @@ fun ChatScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showBudgetWarning = false
-                    showConfirmDialog = true
+                    if (viewModel.activeAiResponse != null) { 
+                        viewModel.saveRecipeToMenu(viewModel.activeAiResponse!!) 
+                        showSuccessPopup = true
+                    }
                 }) {
                     Text("Add Anyway", color = WarningOrange)
                 }
@@ -601,6 +615,29 @@ fun ChatScreen(
             }
         )
     }
+
+    if (showSuccessPopup) {
+        LaunchedEffect(showSuccessPopup) {
+            kotlinx.coroutines.delay(2000)
+            showSuccessPopup = false
+        }
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Successfully added to shopping list",
+                    color = White,
+                    modifier = Modifier.padding(16.dp),
+                    fontSize = 14.sp
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -643,6 +680,22 @@ fun ChatBubble(message: ChatMessage, onAddToCart: ((ParsedResponse) -> Unit)? = 
             }
         }
         
+        if (message.recipe != null && message.recipe.instructions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(
+                modifier = Modifier.widthIn(max = 280.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = CreamLight
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Instructions:", fontWeight = FontWeight.Bold, color = DarkGray, fontSize = 13.sp)
+                    message.recipe.instructions.forEachIndexed { index, step ->
+                        Text("${index + 1}. $step", color = DarkGray, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+        }
+
         if (message.recipe != null && onAddToCart != null) {
             Spacer(modifier = Modifier.height(6.dp))
             Row(

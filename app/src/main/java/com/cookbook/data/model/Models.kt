@@ -9,6 +9,7 @@ data class PantryItem(
 data class ParsedResponse(
     val recipeName: String = "",
     val ingredients: List<String> = emptyList(),
+    val instructions: List<String> = emptyList(),
     val hasRecipe: Boolean = false,
     val totalEstimatedCost: Double = 0.0,
     val calories: String = "N/A",

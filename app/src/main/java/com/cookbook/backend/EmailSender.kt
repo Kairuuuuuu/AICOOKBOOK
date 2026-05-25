@@ -45,11 +45,11 @@ object EmailSender {
             val message = MimeMessage(session).apply {
                 setFrom(InternetAddress(SENDER_EMAIL))
                 setRecipient(Message.RecipientType.TO, InternetAddress(recipientEmail))
-                subject = "Dirk's CookBook - Verification Code"
+                subject = "AI COOKBOOK - Verification Code"
                 setContent(
                     """
                     <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto;">
-                        <h2 style="color: #2D6A4F;">Dirk's CookBook</h2>
+                        <h2 style="color: #2D6A4F;">AI COOKBOOK</h2>
                         <p>Your verification code is:</p>
                         <h1 style="color: #2D6A4F; font-size: 32px; letter-spacing: 8px;">$otp</h1>
                         <p>Enter this code in the app to verify your email.</p>

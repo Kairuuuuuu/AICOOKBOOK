@@ -64,7 +64,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(100.dp))
 
             Text(
-                text = "Dirk's CookBook",
+                text = "AI COOKBOOK",
                 style = MaterialTheme.typography.headlineLarge,
                 color = White,
                 fontWeight = FontWeight.Bold
@@ -186,7 +186,7 @@ fun LoginScreen(
                 modifier = Modifier.padding(bottom = 40.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("New to Dirk's CookBook? ", color = White, fontSize = 14.sp)
+                Text("New to AI COOKBOOK? ", color = White, fontSize = 14.sp)
                 Text(
                     text = "Create an account",
                     color = White,

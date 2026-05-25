@@ -65,7 +65,7 @@ fun EnterEmailScreen(
                     )
                 }
                 Text(
-                    text = "Dirk's CookBook",
+                    text = "AI COOKBOOK",
                     style = MaterialTheme.typography.titleLarge,
                     color = White,
                     fontWeight = FontWeight.Bold
@@ -128,7 +128,7 @@ fun EnterEmailScreen(
                         onClick = {
                             scope.launch {
                                 sendingOtp = true
-                                val result = viewModel.sendOTP(email)
+                                val result = viewModel.sendOTP(email, isForgotPassword)
                                 sendingOtp = false
                                 if (result.status == OTPStatus.SUCCESS) {
                                     onNext(email, result.sentCode)
