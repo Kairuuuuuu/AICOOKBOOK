@@ -1,6 +1,5 @@
 package com.cookbook.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,15 +13,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil.compose.rememberAsyncImagePainter
-import com.cookbook.backend.ShoppingListBackend
 import com.cookbook.ui.theme.*
 import com.cookbook.ui.viewmodel.CookbookViewModel
 
@@ -32,20 +28,9 @@ fun ShoppingListSheet(
     onDismiss: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
-    var imageUrl by remember { mutableStateOf<String?>(null) }
-
     val allChecked = state.checkedIngredients.isNotEmpty() &&
             state.checkedIngredients.all { it }
 
-    LaunchedEffect(state.currentRecipeName) {
-        if (state.currentRecipeName != "No meal selected") {
-            ShoppingListBackend.fetchRecipeImage(state.currentRecipeName) { bitmap ->
-                if (bitmap != null) {
-                    imageUrl = state.currentRecipeName
-                }
-            }
-        }
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -87,24 +72,6 @@ fun ShoppingListSheet(
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
 
-                // Image
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .height(100.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            "https://image.pollinations.ai/prompt/${state.currentRecipeName.replace(" ", "%20")}%20dish?width=320&height=240&nologo=true&model=flux"
-                        ),
-                        contentDescription = state.currentRecipeName,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
 
                 // Missing label
                 Text(
