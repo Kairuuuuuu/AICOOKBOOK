@@ -68,19 +68,6 @@ object FirebaseManager {
         }
     }
 
-    fun sendPasswordResetEmail(email: String, onResult: (Boolean, String) -> Unit) {
-        val firebaseAuth = FirebaseAuth.getInstance()
-        firebaseAuth.sendPasswordResetEmail(email)
-            .addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    onResult(true, "Password reset email sent.")
-                } else {
-                    val msg = mapFirebaseError(task.exception)
-                    onResult(false, msg)
-                }
-            }
-    }
-
     fun logout() {
         val firebaseAuth = FirebaseAuth.getInstance()
         firebaseAuth.signOut()
